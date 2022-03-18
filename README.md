@@ -43,3 +43,5 @@ It is the next step on my previous project as ![ESP8266 with DHT11, GY-30 and OL
 
 Coding in Arduino IDE 1.8.19<br>
 I made this code from sources of the internet. There is no copyright, use it as you want.
+
+# If you want to use with Thinspeak, You can find it as another branch in this repository.
