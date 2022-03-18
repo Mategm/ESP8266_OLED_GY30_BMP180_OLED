@@ -9,6 +9,8 @@
 #include <BH1750.h>
 #include <DHT.h>
 #include <SFE_BMP180.h>
+#include <ESP8266WiFi.h>
+#include <ThingSpeak.h>
  
 BH1750 lightMeter;
 SFE_BMP180 pressure;
@@ -26,6 +28,19 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 #define DHTTYPE DHT11   // DHT 11
 DHT dht(DHTPIN, DHTTYPE);
 
+// WiFi
+const char* ssid = "";   // your network SSID (name) 
+const char* password = "";   // your network password
+
+WiFiClient  client;
+
+unsigned long myChannelNumber = 1; //Thingspeak your channel number
+const char * myWriteAPIKey = ""; // Thingspeak Your channel Write API key
+
+// Timer variables
+unsigned long lastTime = 0;
+unsigned long timerDelay = 30000;
+
 void setup(){
   Serial.begin(115200);
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Its works for my 128x64 OLED 0,96" screen
@@ -35,6 +50,8 @@ void setup(){
   display.clearDisplay();
   Wire.begin();
   dht.begin();
+  WiFi.mode(WIFI_STA);
+  ThingSpeak.begin(client);  // Initialize ThingSpeak
   
   lightMeter.begin();
   lightMeter.configure(BH1750::CONTINUOUS_HIGH_RES_MODE_2);
@@ -42,7 +59,7 @@ void setup(){
   display.setTextSize(1); //1-8; 1 is default, not needed
   display.setTextColor(WHITE); // Not relevant for one or two color OLED display but needed for the code
   display.setCursor(0,0); //0,0 to 120,57
-  display.println("Weather Station by!");
+  display.println("Weather Station by:");
   display.println("Mategm!");
   display.display();
 
@@ -62,6 +79,9 @@ void loop() {
   double T,P,p0,a;
   float h = dht.readHumidity();
   float t = dht.readTemperature(); // Read temperature as Fahrenheit (isFahrenheit = true; default C as false)
+  while (t < 0 or t == 'nan') {
+    delay(500);
+  }
   float l = lightMeter.readLightLevel();
 
   // pressure
@@ -90,6 +110,7 @@ void loop() {
   
   
   // Calculate lux and pressure position according to its number length
+  int pad0 = (humi.length() * 6) + 19;
   int pad1 = (lux.length() * 6) + 19;
   int pad2 = (pres.length() *6) + 19;
 
@@ -110,7 +131,7 @@ void loop() {
   display.setTextSize(1);
   display.setCursor(0, 10);
   display.print("Humidity:   ");
-  display.setCursor(85,10);
+  display.setCursor((SCREEN_WIDTH - pad0),10);
   display.print(humi);
   display.print(" ");
   display.print("%"); 
@@ -133,4 +154,36 @@ void loop() {
   
   display.display();
   delay(5000); // display the values for 5 seconds before update
+
+  // Thingspeak
+  if ((millis() - lastTime) > timerDelay) {
+    
+    // Connect or reconnect to WiFi
+    if(WiFi.status() != WL_CONNECTED){
+      Serial.println("Connecting to WiFi");
+      while(WiFi.status() != WL_CONNECTED){
+        WiFi.begin(ssid, password); 
+        delay(5000);     
+      } 
+      Serial.println("Connected to WiFi.");
+    }
+
+    // set the fields with the values
+    ThingSpeak.setField(1, temp);
+    ThingSpeak.setField(2, humi);
+    ThingSpeak.setField(3, lux);
+    ThingSpeak.setField(4, pres);
+    
+    // Write to ThingSpeak. There are up to 8 fields in a channel, allowing you to store up to 8 different
+    // pieces of information in a channel.  Here, we write to field 1.
+    int x = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
+
+    if(x == 200){
+      Serial.println("Channel update successful.");
+    }
+    else{
+      Serial.println("Problem updating channel. HTTP error code " + String(x));
+    }
+    lastTime = millis();
+  }
 }
